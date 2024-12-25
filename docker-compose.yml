@@ -14,17 +14,35 @@ services:
     depends_on:
       - zookeeper
     environment:
+      CONNECT_PLUGIN_PATH: '/usr/share/java,/usr/share/confluent-hub-components/'
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    command:
+      - bash
+      - -c
+      - |
+        # Install connector plugins
+        # Install MongoDB Sink Connector
+        confluent-hub install --no-prompt --verbose mongodb/kafka-connect-mongodb:latest
+        
+        # Launch the Kafka Connect worker
+        /etc/confluent/docker/run &
+        
+        # Don't exit
+        sleep infinity
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9092"]
+      test: [ "CMD", "curl", "-f", "http://localhost:9092" ]
       interval: 30s
       retries: 5
       start_period: 20s
       timeout: 10s
+
     networks:
-      - ecommerce-network
+    - ecommerce-network
+
 
   control-center:
     image: confluentinc/cp-enterprise-control-center:7.5.0
@@ -40,6 +58,7 @@ services:
       CONTROL_CENTER_INTERNAL_TOPICS_REPLICATION: 1
       CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
       CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_REPLICATION: 1
+      CONTROL_CENTER_REPLICATION_FACTOR : 1
     networks:
       - ecommerce-network
 
@@ -68,48 +87,14 @@ services:
     networks:
       - ecommerce-network
 
-  mysql:
-    image: mysql:8.0
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_USER: ecommerce
-      MYSQL_PASSWORD: ecommerce
-      MYSQL_DATABASE: ecommerce_db
-    ports:
-      - 3307:3306
-    volumes:
-      - mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 30s
-      retries: 5
-      start_period: 20s
-      timeout: 10s
-    networks:
-      - ecommerce-network
-
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin
-    container_name: phpmyadmin
-    environment:
-      PMA_HOST: mysql
-      PMA_USER: root
-      PMA_PASSWORD: root
-    ports:
-      - "8081:80"
-    depends_on:
-      - mysql
-    networks:
-      - ecommerce-network
-
   mongodb:
-    image: mongo:6.0
-    ports:
-      - 27017:27017
-    volumes:
-      - mongo_data:/data/db
-    networks:
-      - ecommerce-network
+      image: mongo:6.0
+      ports:
+        - 27017:27017
+      volumes:
+        - mongo_data:/data/db
+      networks:
+        - ecommerce-network
 
   grafana:
     image: grafana/grafana:9.5.20
@@ -140,6 +125,8 @@ services:
     hostname: postgres
     ports:
       - '5432:5432'
+    volumes:
+       - postgres_data:/var/lib/postgresql/data
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -169,6 +156,7 @@ services:
 volumes:
   mysql_data:
   mongo_data:
+  postgres_data:
 
 networks:
   ecommerce-network:
