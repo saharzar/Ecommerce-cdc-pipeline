@@ -1,163 +1,90 @@
-version: '3.8'
+version: '3.5'
 
 services:
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    networks:
-      - ecommerce-network
+    container_name: zookeeper
+    image: debezium/zookeeper:${DEBEZIUM_VERSION:-1.4}
+    ports:
+      - 2181:2181
+      - 2888:2888
+      - 3888:3888
 
   kafka:
-    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    image: debezium/kafka:${DEBEZIUM_VERSION:-1.4}
+    ports:
+      - 9092:9092
     depends_on:
       - zookeeper
     environment:
-      CONNECT_PLUGIN_PATH: '/usr/share/java,/usr/share/confluent-hub-components/'
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
-    command:
-      - bash
-      - -c
-      - |
-        # Install connector plugins
-        # Install MongoDB Sink Connector
-        confluent-hub install --no-prompt --verbose mongodb/kafka-connect-mongodb:latest
-        
-        # Launch the Kafka Connect worker
-        /etc/confluent/docker/run &
-        
-        # Don't exit
-        sleep infinity
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:9092" ]
-      interval: 30s
-      retries: 5
-      start_period: 20s
-      timeout: 10s
+      - ZOOKEEPER_CONNECT=zookeeper:2181
 
-    networks:
-    - ecommerce-network
-
-
-  control-center:
-    image: confluentinc/cp-enterprise-control-center:7.5.0
-    depends_on:
-      - kafka
+  mysql:
+    container_name: mysql
+    image: mysql:${MYSQL_VERSION:-8.0.26}
     ports:
-      - "9021:9021"
+      - 3306:3306
     environment:
-      CONTROL_CENTER_BOOTSTRAP_SERVERS: kafka:9092
-      CONTROL_CENTER_ZOOKEEPER_CONNECT: zookeeper:2181
-      CONTROL_CENTER_CONNECT_CLUSTER: http://debezium:8083
-      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
-      CONTROL_CENTER_INTERNAL_TOPICS_REPLICATION: 1
-      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
-      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_REPLICATION: 1
-      CONTROL_CENTER_REPLICATION_FACTOR : 1
-    networks:
-      - ecommerce-network
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_USER=user
+      - MYSQL_PASSWORD=password
 
-  debezium:
-    image: debezium/connect:2.5
-    depends_on:
-      - kafka
+
+  elastic:
+    container_name: elastic
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_VERSION:-7.3.0}
+    ports:
+      - 9200:9200
     environment:
-      BOOTSTRAP_SERVERS: kafka:9092
-      GROUP_ID: debezium
-      CONFIG_STORAGE_TOPIC: debezium-configs
-      OFFSET_STORAGE_TOPIC: debezium-offsets
-      STATUS_STORAGE_TOPIC: debezium-status
-      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
-      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
-      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: false
-      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: false
+      - http.host=0.0.0.0
+      - transport.host=127.0.0.1
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+
+  connect:
+    container_name: connect
+    image: debezium/connect:2.5
     ports:
       - 8083:8083
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083"]
-      interval: 30s
-      retries: 5
-      start_period: 20s
-      timeout: 10s
-    networks:
-      - ecommerce-network
-
-  mongodb:
-      image: mongo:6.0
-      ports:
-        - 27017:27017
-      volumes:
-        - mongo_data:/data/db
-      networks:
-        - ecommerce-network
-
-  grafana:
-    image: grafana/grafana:9.5.20
+      - 5005:5005
     depends_on:
-      - mongodb
-    ports:
-      - 3000:3000
-    networks:
-      - ecommerce-network
+      - kafka
+      - mysql
+      - elastic
+    environment:
+      - BOOTSTRAP_SERVERS=kafka:9092
+      - GROUP_ID=1
+      - CONFIG_STORAGE_TOPIC=my_connect_configs
+      - OFFSET_STORAGE_TOPIC=my_connect_offsets
+      - STATUS_STORAGE_TOPIC=my_source_connect_statuses
 
-  debezium-ui:
-    image: debezium/debezium-ui:latest
-    container_name: debezium-ui
-    hostname: debezium-ui
+
+
+  kibana:
+    container_name: kibana
+    image: docker.elastic.co/kibana/kibana:${ELASTIC_VERSION:-7.3.0}
+    ports:
+      - 5601:5601
     depends_on:
-      debezium:
-        condition: service_healthy
-    ports:
-      - '8080:8080'
+      - elastic
     environment:
-      KAFKA_CONNECT_URIS: http://debezium:8083
-    networks:
-      - ecommerce-network
+      - ELASTICSEARCH_HOSTS=http://elastic:9200
 
-  postgres:
-    image: postgres:latest
-    container_name: postgres
-    hostname: postgres
-    ports:
-      - '5432:5432'
-    volumes:
-       - postgres_data:/var/lib/postgresql/data
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: ecommerce_db
-    command: [ 'postgres', '-c', 'wal_level=logical' ]
-    healthcheck:
-      test: [ 'CMD', 'psql', '-U', 'postgres', '-c', 'SELECT 1' ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - ecommerce-network
-
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: pgadmin
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-    ports:
-      - "5050:80"
-    networks:
-      - ecommerce-network
+  control-center:
+    container_name: control-center
+    image: confluentinc/cp-enterprise-control-center:6.2.0
     depends_on:
-      - postgres
+      - connect
+    ports:
+      - 9021:9021
+    environment:
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'kafka:9092'
+      CONTROL_CENTER_CONNECT_CONNECT-DEFAULT_CLUSTER: 'connect:8083'
+      CONTROL_CENTER_REPLICATION_FACTOR: 1
+      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
+      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
+      CONFLUENT_METRICS_TOPIC_REPLICATION: 1
+      PORT: 9021
 
-volumes:
-  mysql_data:
-  mongo_data:
-  postgres_data:
 
-networks:
-  ecommerce-network:
-    driver: bridge
+
