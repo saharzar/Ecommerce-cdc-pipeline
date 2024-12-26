@@ -1,0 +1,21 @@
+{
+  "name": "pg-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "plugin.name": "pgoutput",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "admin",
+    "database.password": "adminpassword",
+    "database.dbname": "ecommerce",
+    "database.server.name": "pg-ecommerce",
+    "table.include.list": "public.*",
+    "heartbeat.interval.ms": "5000",
+    "slot.name": "ecommerce_debezium",
+    "publication.name": "ecommerce_publication",
+    "transforms": "AddPrefix",
+    "transforms.AddPrefix.type": "org.apache.kafka.connect.transforms.RegexRouter",
+    "transforms.AddPrefix.regex": "pg-ecommerce.public.(.*)",
+    "transforms.AddPrefix.replacement": "data.cdc.ecommerce.$1"
+  }
+}
