@@ -1,4 +1,4 @@
-# ecommorce-project
+# ecommerce-project
 
 This project uses Docker Compose to set up a multi-container environment with Kafka, Zookeeper, MongoDB, PostgreSQL, and other services. The following instructions will guide you on how to run and stop the containers.
 
