@@ -1,9 +1,11 @@
-# ecommerce-project
+# E-commerce CDC Pipeline with Kafka & Debezium
 
-This project uses Docker Compose to set up a multi-container environment with Kafka, Zookeeper, MongoDB, PostgreSQL, and other services. The following instructions will guide you on how to run and stop the containers.
+This project sets up a multi-container environment using Docker Compose, integrating Kafka, Zookeeper, MongoDB, PostgreSQL, Debezium, and other services for real-time Change Data Capture (CDC).
 
 ## Prerequisites
 
+Before running the project, ensure you have:
+Docker installed on your system.
 - Docker: [Install Docker](https://docs.docker.com/get-docker/)
 
 ## Running the Docker Containers
